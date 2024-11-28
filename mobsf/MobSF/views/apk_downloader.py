@@ -16,6 +16,7 @@ from mobsf.MobSF.views.scanning import (
     handle_uploaded_file,
 )
 from mobsf.MobSF.utils import (
+    is_internet_available,
     is_path_traversal,
     is_zip_magic,
     strict_package_check,
@@ -36,6 +37,7 @@ def fetch_html(url):
     try:
         proxies, verify = upstream_proxy('https')
         res = requests.get(url,
+                           timeout=5,
                            headers=headers,
                            proxies=proxies,
                            verify=verify,
@@ -50,7 +52,12 @@ def fetch_html(url):
 def download_file(url, outfile):
     try:
         logger.info('Downloading APK...')
-        with requests.get(url, stream=True) as r:
+        proxies, verify = upstream_proxy('https')
+        with requests.get(url,
+                          timeout=5,
+                          stream=True,
+                          proxies=proxies,
+                          verify=verify) as r:
             r.raise_for_status()
             with open(outfile, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -129,6 +136,9 @@ def apk_download(package):
     downloaded_file = None
     data = None
     try:
+        if not is_internet_available():
+            logger.warning('Internet Not Available. Unable to download APK')
+            return None
         if not strict_package_check(package) or is_path_traversal(package):
             return None
         logger.info('Attempting to download: %s', package)

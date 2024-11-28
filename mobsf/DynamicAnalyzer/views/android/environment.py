@@ -2,12 +2,13 @@
 """Dynamic Analyzer Helpers."""
 import logging
 import os
-import re
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
+from base64 import b64encode
 from hashlib import md5
 
 from django.conf import settings
@@ -17,6 +18,7 @@ from OpenSSL import crypto
 from frida import __version__ as frida_version
 
 from mobsf.DynamicAnalyzer.tools.webproxy import (
+    create_ca,
     get_ca_file,
     get_http_tools_url,
     start_proxy,
@@ -35,7 +37,7 @@ from mobsf.MobSF.utils import (
 from mobsf.StaticAnalyzer.models import StaticAnalyzerAndroid
 
 logger = logging.getLogger(__name__)
-ANDROID_API_SUPPORTED = 29
+ANDROID_API_SUPPORTED = 30
 
 
 class Environment:
@@ -51,8 +53,9 @@ class Environment:
 
     def wait(self, sec):
         """Wait in Seconds."""
-        logger.info('Waiting for %s seconds...', str(sec))
-        time.sleep(sec)
+        if sec > 0:
+            logger.info('Waiting for %s seconds...', str(sec))
+            time.sleep(sec)
 
     def check_connect_error(self, output):
         """Check if connect failed."""
@@ -61,16 +64,27 @@ class Environment:
             return False
         return True
 
-    def run_subprocess_verify_output(self, cmd):
+    def run_subprocess_verify_output(self, cmd, wait=2):
         """Run subprocess and verify execution."""
         out = subprocess.check_output(cmd)  # lgtm [py/command-line-injection]
-        self.wait(2)                        # adb shell is allowed
+        self.wait(wait)                        # adb shell is allowed
         return self.check_connect_error(out)
+
+    def connect(self):
+        """ADB Connect."""
+        if not self.identifier:
+            return False
+        logger.info('Connecting to Android %s', self.identifier)
+        self.run_subprocess_verify_output([get_adb(),
+                                           'connect',
+                                           self.identifier])
 
     def connect_n_mount(self):
         """Test ADB Connection."""
+        if not self.identifier:
+            return False
         self.adb_command(['kill-server'])
-        self.adb_command(['start-server'])
+        self.adb_command(['start-server'], False, True)
         logger.info('ADB Restarted')
         self.wait(2)
         logger.info('Connecting to Android %s', self.identifier)
@@ -178,9 +192,8 @@ class Environment:
         """HTTPS Proxy."""
         self.install_mobsf_ca('install')
         proxy_port = settings.PROXY_PORT
-        logger.info('Starting HTTPs Proxy on %s', proxy_port)
-        httptools_url = get_http_tools_url(request)
-        stop_httptools(httptools_url)
+        logger.info('Starting HTTPS Proxy on %s', proxy_port)
+        stop_httptools(get_http_tools_url(request))
         start_proxy(proxy_port, project)
 
     def install_mobsf_ca(self, action):
@@ -293,47 +306,25 @@ class Environment:
                 'opensecurity.clipdump/.ClipDumper']
         self.adb_command(args, True)
 
-    def get_screen_res(self):
-        """Get Screen Resolution of Android Instance."""
-        logger.info('Getting screen resolution')
-        try:
-            resp = self.adb_command(['dumpsys', 'window'], True)
-            scn_rgx = re.compile(r'mUnrestrictedScreen=\(0,0\) .*')
-            scn_rgx2 = re.compile(r'mUnrestricted=\[0,0\]\[.*\]')
-            match = scn_rgx.search(resp.decode('utf-8'))
-            if match:
-                screen_res = match.group().split(' ')[1]
-                width, height = screen_res.split('x', 1)
-                return width, height
-            match = scn_rgx2.search(resp.decode('utf-8'))
-            if match:
-                res = match.group().split('][')[1].replace(']', '')
-                width, height = res.split(',', 1)
-                return width, height
-            else:
-                logger.error('Error getting screen resolution')
-        except Exception:
-            logger.exception('Getting screen resolution')
-        return '1440', '2560'
-
     def screen_shot(self, outfile):
         """Take Screenshot."""
         self.adb_command(['screencap',
                           '-p',
-                          '/data/local/screen.png'], True)
+                          '/data/local/screen.png'], True, True)
         self.adb_command(['pull',
                           '/data/local/screen.png',
-                          outfile])
+                          outfile], False, True)
 
     def screen_stream(self):
         """Screen Stream."""
         self.adb_command(['screencap',
                           '-p',
                           '/data/local/stream.png'],
-                         True)
-        self.adb_command(['pull',
-                          '/data/local/stream.png',
-                          '{}screen.png'.format(settings.SCREEN_DIR)])
+                         True, True)
+        out = self.adb_command(['cat', '/data/local/stream.png'], True, True)
+        if out:
+            return b64encode(out).decode('utf-8')
+        return ''
 
     def android_component(self, bin_hash, comp):
         """Get APK Components."""
@@ -359,24 +350,26 @@ class Environment:
     def get_environment(self):
         """Identify the environment."""
         out = self.adb_command(['getprop',
-                                'ro.boot.serialno'], True)
+                                'ro.boot.serialno'], True, False)
         out += self.adb_command(['getprop',
-                                 'ro.serialno'], True)
+                                 'ro.serialno'], True, False)
         out += self.adb_command(['getprop',
-                                 'ro.build.user'], True)
+                                 'ro.build.user'], True, False)
         out += self.adb_command(['getprop',
-                                 'ro.manufacturer.geny-def'], True)
+                                 'ro.manufacturer.geny-def'],
+                                True, False)
         out += self.adb_command(['getprop',
-                                 'ro.product.manufacturer.geny-def'], True)
+                                 'ro.product.manufacturer.geny-def'],
+                                True, False)
         ver = self.adb_command(['getprop',
                                 'ro.genymotion.version'],
-                               True).decode('utf-8', 'ignore')
+                               True, False).decode('utf-8', 'ignore')
         if b'EMULATOR' in out:
             logger.info('Found Android Studio Emulator')
             return 'emulator'
         elif (b'genymotion' in out.lower()
                 or any(char.isdigit() for char in ver)):
-            logger.info('Found Genymotion x86 Android VM')
+            logger.info('Found Genymotion Android VM')
             return 'genymotion'
         elif b'corellium' in out:
             logger.info('Found Corellium ARM Android VM')
@@ -391,7 +384,8 @@ class Environment:
     def get_android_version(self):
         """Get Android version."""
         out = self.adb_command(['getprop',
-                                'ro.build.version.release'], True)
+                                'ro.build.version.release'],
+                               True, False)
         and_version = out.decode('utf-8').rstrip()
         if and_version.count('.') > 1:
             and_version = and_version.rsplit('.', 1)[0]
@@ -421,7 +415,9 @@ class Environment:
             'list',
             'packages',
             '-f',
-            '-3'], True)
+            '-3'], True, True)
+        if not out:
+            return device_packages
         for pkg_str in out.decode('utf-8').rstrip().split():
             path_pkg = pkg_str.split('package:', 1)[1].strip()
             parts = path_pkg.split('.apk=', 1)
@@ -441,31 +437,71 @@ class Environment:
             device_packages[md5] = (pkg, apk)
         return device_packages
 
+    def download_apk_packages(self, pkg_path, out_file):
+        """Download APK package(s)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download APK package(s)
+            # Can be single or multiple packages
+            out = self.adb_command([
+                'pull',
+                pkg_path.as_posix(),
+                temp_dir,
+            ])
+            fmt = out.decode('utf-8').strip()
+            logger.info('ADB Pull Output: %s', fmt)
+            # Filter for APK files in the directory
+            apk_files = []
+            for f in Path(temp_dir).glob('*.apk'):
+                if f.is_file():
+                    apk_files.append(f)
+            # Check if there is exactly one APK file
+            if len(apk_files) == 1:
+                shutil.move(apk_files[0], out_file)
+                return 'apk'
+            else:
+                # If there are multiple APK files, zip them
+                shutil.make_archive(out_file, 'zip', root_dir=temp_dir, base_dir='.')
+                # Rename the zip file to APK
+                apks_file = out_file.with_suffix('.apk')
+                os.rename(out_file.as_posix() + '.zip', apks_file)
+                return 'apks'
+
+    def get_apk_packages(self, package):
+        """Get all APK packages from device."""
+        out = self.adb_command([
+            'pm',
+            'path',
+            package], True)
+        return out.decode('utf-8').strip()
+
+    def get_apk_parent_directory(self, package):
+        """Get parent directory of APK packages."""
+        package_out = self.get_apk_packages(package)
+        package_out = package_out.split()
+        if ('package:' in package_out[0]
+                and package_out[0].endswith('.apk')):
+            path = package_out[0].split('package:', 1)[1].strip()
+            return Path(path).parent
+        return False
+
     def get_apk(self, checksum, package):
         """Download APK from device."""
         try:
-            out_dir = os.path.join(settings.UPLD_DIR, checksum + '/')
-            if not os.path.exists(out_dir):
-                os.makedirs(out_dir)
-            out_file = os.path.join(out_dir, f'{checksum}.apk')
-            if is_file_exists(out_file):
-                return out_file
-            out = self.adb_command([
-                'pm',
-                'path',
-                package], True)
-            out = out.decode('utf-8').rstrip()
-            path = out.split('package:', 1)[1].strip()
-            logger.info('Downloading APK')
-            self.adb_command([
-                'pull',
-                path,
-                out_file,
-            ])
-            if is_file_exists(out_file):
-                return out_file
+            # Do not download if already exists
+            out_dir = Path(settings.UPLD_DIR) / checksum
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_file = out_dir / f'{checksum}.apk'
+            if out_file.exists():
+                return 'apk'
+            # Get APK package parent directory
+            pkg_path = self.get_apk_parent_directory(package)
+            if pkg_path:
+                # Download APK package(s)
+                logger.info('Downloading APK')
+                return self.download_apk_packages(pkg_path, out_file)
         except Exception:
-            return False
+            logger.exception('Failed to download APK')
+        return False
 
     def system_check(self, runtime):
         """Check if /system is writable."""
@@ -499,6 +535,7 @@ class Environment:
                                  'MobSF documentation!')
                 return False
         except Exception:
+            logger.exception('System check failed')
             logger.error(err_msg)
             return False
         return True
@@ -564,15 +601,9 @@ class Environment:
 
     def mobsf_agents_setup(self, agent):
         """Setup MobSF agents."""
+        create_ca()
         # Install MITM RootCA
         self.install_mobsf_ca('install')
-        # Install MobSF Agents
-        mobsf_agents = 'onDevice/mobsf_agents/'
-        clip_dump = os.path.join(self.tools_dir,
-                                 mobsf_agents,
-                                 'ClipDump.apk')
-        logger.info('Installing MobSF Clipboard Dumper')
-        self.adb_command(['install', '-r', clip_dump])
         if agent == 'frida':
             agent_file = '.mobsf-f'
             agent_str = self.frida_str
@@ -589,6 +620,12 @@ class Environment:
         """Setup Xposed."""
         xposed_dir = 'onDevice/xposed/'
         xposed_modules = xposed_dir + 'modules/'
+        # Install MobSF Agents for Xposed
+        clip_dump_apk = os.path.join(self.tools_dir,
+                                     xposed_dir,
+                                     'ClipDump.apk')
+        logger.info('Installing MobSF Clipboard Dumper')
+        self.adb_command(['install', '-r', clip_dump_apk])
         if android_version < 5:
             logger.info('Installing Xposed for Kitkat and below')
             xposed_apk = os.path.join(self.tools_dir,
@@ -657,7 +694,7 @@ class Environment:
         elif arch == 'x86_64':
             frida_arch = 'x86_64'
         else:
-            logger.error('Make sure a Genymotion Android x86 VM'
+            logger.error('Make sure a Genymotion Android VM'
                          ' or Android Studio Emulator'
                          ' instance is running')
             return

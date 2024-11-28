@@ -8,7 +8,7 @@ import requests
 
 from django.conf import settings
 
-from mobsf.MobSF.utils import is_file_exists, upstream_proxy
+from mobsf.MobSF.utils import upstream_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,11 @@ def stop_httptools(url):
         http_proxy = url.replace('https://', 'http://')
         headers = {'httptools': 'kill'}
         url = 'http://127.0.0.1'
-        requests.get(url, headers=headers, proxies={
-                     'http': http_proxy})
+        requests.get(
+            url,
+            timeout=5,
+            headers=headers,
+            proxies={'http': http_proxy})
         logger.info('Killing httptools Proxy')
     except Exception:
         pass
@@ -61,17 +64,17 @@ def create_ca():
                      stdout=None,
                      stderr=None,
                      close_fds=True)
-    time.sleep(2)
+    time.sleep(3)
 
 
 def get_ca_file():
     """Get CA Dir."""
-    from mitmproxy import ctx
-    ca_dir = Path(ctx.mitmproxy.options.CONF_DIR).expanduser()
-    ca_file = os.path.join(str(ca_dir), 'mitmproxy-ca-cert.pem')
-    if not is_file_exists(ca_file):
+    from mitmproxy import options
+    ca_dir = Path(options.CONF_DIR).expanduser()
+    ca_file = ca_dir / 'mitmproxy-ca-cert.pem'
+    if not ca_file.exists():
         create_ca()
-    return ca_file
+    return ca_file.as_posix()
 
 
 def get_traffic(package):

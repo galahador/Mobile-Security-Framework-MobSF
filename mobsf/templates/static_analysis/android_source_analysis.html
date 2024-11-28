@@ -6,8 +6,8 @@
     {% block extra_css %}
     <link href="{% static "adminlte/plugins/sweetalert2/sweetalert2.min.css" %}" rel="stylesheet">
     <!-- DataTables -->
-    <link rel="stylesheet" href="{% static "adminlte/plugins/datatables-bs4/dataTables.bootstrap4.min.css" %}">
-     <style type="text/css" media="print">
+    <link href="{% static "datatables/css/datatables.combined.min.css" %}" rel="stylesheet">
+    <style type="text/css" media="print">
         @page { size: landscape; }
         @media print {
           .btn, #scan_options  {
@@ -119,6 +119,12 @@
                   <p>File Analysis</p>
                 </a>
               </li>
+              <li class="nav-item">
+                <a href="#firebase" class="nav-link">
+                  <i class="fas fa-database nav-icon"></i>
+                  <p>Firebase Analysis</p>
+                </a>
+              </li>
             </ul>
           </li>
           <li class="nav-item has-treeview">
@@ -130,6 +136,18 @@
               </p>
             </a>
             <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="#behaviour" class="nav-link">
+                  <i class="fas fa-sitemap nav-icon"></i>
+                  <p>Behaviour Analysis</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="#malware_permissions" class="nav-link">
+                  <i class="fa fa-braille nav-icon"></i>
+                  <p>Abused Permissions</p>
+                </a>
+              </li>
               <li class="nav-item">
                 <a href="#serverlocations" class="nav-link">
                   <i class="fas fa-globe-asia nav-icon"></i>
@@ -160,12 +178,6 @@
                 </a>
               </li>
               <li class="nav-item">
-                <a href="#firebase" class="nav-link">
-                  <i class="fas fa-database nav-icon"></i>
-                  <p>Firebase DB</p>
-                </a>
-              </li>
-              <li class="nav-item">
                 <a href="#emails" class="nav-link">
                   <i class="fas fa-envelope nav-icon"></i>
                   <p>Emails</p>
@@ -175,6 +187,12 @@
                 <a href="#trackers" class="nav-link">
                   <i class="fas fa-user-secret nav-icon"></i>
                   <p>Trackers</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="#secrets" class="nav-link">
+                  <i class="fas fa-key nav-icon"></i>
+                  <p>Hardcoded Secrets</p>
                 </a>
               </li>
               <li class="nav-item">
@@ -224,6 +242,12 @@
                   <p>Libraries</p>
                 </a>
               </li>
+              <li class="nav-item">
+                <a href="#sbom" class="nav-link">
+                  <i class="fa fa-archive nav-icon"></i>
+                  <p>SBOM</p>
+                </a>
+              </li>
                <li class="nav-item">
                 <a href="#files" class="nav-link">
                   <i class="far fa-copy nav-icon"></i>
@@ -233,7 +257,7 @@
             </ul>
           </li>
             <li class="nav-item">
-              <a href="../pdf/?md5={{ md5 }}" class="nav-link">
+              <a href="{% url "pdf" checksum=md5 %}" class="nav-link">
               <i class="nav-icon fas fa-file-pdf"></i>
               <p>
                 PDF Report
@@ -283,10 +307,7 @@
                 <div class="row">
                 <div class="col-2">
                   <p><strong><i class="fas fa-check-double"></i> APP SCORES</strong></p>
-                  <img id="app_icon" src="{% if icon_found %}/download/{{ md5 }}-icon.png{% else %}{% static 'img/no_icon.png' %}{% endif %}"/>
-                  {% if icon_hidden %}
-                    <strong>Hidden Icon!</strong>
-                  {% endif %}
+                  <img id="app_icon" src="{% if icon_path %}/download/{{ icon_path }}{% else %}{% static 'img/no_icon.png' %}{% endif %}"/>
                   <p>
                   {% if average_cvss %}
                   <span class="badge bg-info">Average CVSS</span> <b>{{ average_cvss }} </b><br/>
@@ -298,7 +319,7 @@
                     <span class="badge bg-success">Trackers Detection</span> <strong>{{ trackers.detected_trackers }}/{{ trackers.total_trackers }}</strong><br/>
                   {% endif %}  
                 </p>
-                  <p> <a href="../appsec_dashboard/{{ md5 }}/" class="btn btn-outline-primary btn-sm" role="button"><i class="fas fa-user-shield"></i> MobSF Scorecard</a></p>
+                  <p> <a href="{% url 'appsec_dashboard' checksum=md5 %}" class="btn btn-outline-primary btn-sm" role="button"><i class="fas fa-user-shield"></i> MobSF Scorecard</a></p>
 
                 </div>
                 <div class="col-6">
@@ -385,140 +406,83 @@
   </div>
 
   <!-- Boxes -->
-   <div class="container-fluid">
-      <div class="row">
-        <div class="col-lg-12">
-        
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title"></h5>
-                <div class="row">
-                        <!-- Boxes columns -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <!-- small box -->
-                        <div class="small-box bg-info">
-                          <div class="inner">
-                            <h3>{{ activities | length }}</h3>
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-lg-12">
 
-                            <p>ACTIVITIES</p>
-                          </div>
-                          <div class="icon">
-                            <i class="fa fa-language"></i>
-                          </div>
-                          <a href="#activities" class="small-box-footer">View <i class="fas fa-arrow-circle-down"></i></a>
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title"></h5>
+              <div class="row">
+                      <!-- Boxes columns -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                      <!-- small box -->
+                      <div class="small-box bg-info">
+                        <div class="inner">
+                          <h3> {{ exported_count.exported_activities }} / {{ activities | length }}</h3>
+
+                          <p>EXPORTED ACTIVITIES</p>
                         </div>
+                        <div class="icon">
+                          <i class="fa fa-language"></i>
+                        </div>
+                        <a href="#activities" class="small-box-footer">View All <i class="fas fa-arrow-circle-down"></i></a>
                       </div>
-                      <!-- ./col -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <!-- small box -->
-                        <div class="small-box bg-success">
-                          <div class="inner">
-                            <h3>{{ services | length }}</h3>
+                    </div>
+                    <!-- ./col -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                      <!-- small box -->
+                      <div class="small-box bg-success">
+                        <div class="inner">
+                          <h3>{{ exported_count.exported_services }} / {{ services | length }}</h3>
 
-                            <p>SERVICES</p>
-                          </div>
-                          <div class="icon">
-                            <i class="fa fa-cogs"></i>
-                          </div>
-                          <a href="#services" class="small-box-footer">View <i class="fas fa-arrow-circle-down"></i></a>
+                          <p>EXPORTED SERVICES</p>
                         </div>
+                        <div class="icon">
+                          <i class="fa fa-cogs"></i>
+                        </div>
+                        <a href="#services" class="small-box-footer">View All <i class="fas fa-arrow-circle-down"></i></a>
                       </div>
-                      <!-- ./col -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <!-- small box -->
-                        <div class="small-box bg-warning">
-                          <div class="inner">
-                            <h3>{{ receivers | length }}</h3>
+                    </div>
+                    <!-- ./col -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                      <!-- small box -->
+                      <div class="small-box bg-warning">
+                        <div class="inner">
+                          <h3>{{ exported_count.exported_receivers }} / {{ receivers | length }}</h3>
 
-                            <p>RECEIVERS</p>
-                          </div>
-                          <div class="icon">
-                            <i class="fa fa-assistive-listening-systems"></i>
-                          </div>
-                          <a href="#receivers" class="small-box-footer">View <i class="fas fa-arrow-circle-down"></i></a>
+                          <p>EXPORTED RECEIVERS</p>
                         </div>
+                        <div class="icon">
+                          <i class="fa fa-assistive-listening-systems"></i>
+                        </div>
+                        <a href="#receivers" class="small-box-footer">View All <i class="fas fa-arrow-circle-down"></i></a>
                       </div>
-                      <!-- ./col -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <!-- small box -->
-                        <div class="small-box bg-danger">
-                          <div class="inner">
-                            <h3>{{ providers | length }}</h3>
+                    </div>
+                    <!-- ./col -->
+                    <div class="col-12 col-sm-6 col-md-3">
+                      <!-- small box -->
+                      <div class="small-box bg-danger">
+                        <div class="inner">
+                          <h3>{{exported_count.exported_providers}} / {{ providers | length }}</h3>
 
-                            <p>PROVIDERS</p>
-                          </div>
-                          <div class="icon">
-                            <i class="fa fa-database"></i>
-                          </div>
-                          <a href="#providers" class="small-box-footer">View <i class="fas fa-arrow-circle-down"></i></a>
+                          <p>EXPORTED PROVIDERS</p>
                         </div>
-                      <!-- /.row -->
-                    </div><!-- /.container-fluid -->
-                        <div class="col-12 col-sm-6 col-md-3">
-                        <div class="info-box">
-                          <span class="info-box-icon bg-info elevation-1"><i class="fas fa-language"></i></span>
-
-                          <div class="info-box-content">
-                            <span class="info-box-text">Exported <br/>Activities</span>
-                            <span class="info-box-number">
-                              {{  exported_count.exported_activities }}
-                            </span>
-                          </div>
-                          <!-- /.info-box-content -->
+                        <div class="icon">
+                          <i class="fa fa-database"></i>
                         </div>
-                        <!-- /.info-box -->
+                        <a href="#providers" class="small-box-footer">View All <i class="fas fa-arrow-circle-down"></i></a>
                       </div>
-                      <!-- /.col -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <div class="info-box mb-3">
-                          <span class="info-box-icon bg-success elevation-1"><i class="fas fa-cogs"></i></span>
-
-                          <div class="info-box-content">
-                            <span class="info-box-text">Exported <br/>Services</span>
-                            <span class="info-box-number">{{  exported_count.exported_services }}</span>
-                          </div>
-                          <!-- /.info-box-content -->
-                        </div>
-                        <!-- /.info-box -->
-                      </div>
-                      <!-- /.col -->
-
-                      <!-- fix for small devices only -->
-                      <div class="clearfix hidden-md-up"></div>
-
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <div class="info-box mb-3">
-                          <span class="info-box-icon bg-warning elevation-1"><i class="fas fa-assistive-listening-systems"></i></span>
-
-                          <div class="info-box-content">
-                            <span class="info-box-text">Exported <br/>Receivers</span>
-                            <span class="info-box-number">{{ exported_count.exported_receivers}}</span>
-                          </div>
-                          <!-- /.info-box-content -->
-                        </div>
-                        <!-- /.info-box -->
-                      </div>
-                      <!-- /.col -->
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <div class="info-box mb-3">
-                          <span class="info-box-icon bg-danger elevation-1"><i class="fas fa-database"></i></span>
-
-                          <div class="info-box-content">
-                            <span class="info-box-text">Exported <br/>Providers</span>
-                            <span class="info-box-number">{{ exported_count.exported_providers }}</span>
-                          </div>
-                          <!-- /.info-box-content -->
-                        </div>
-                        <!-- /.info-box -->
-                      </div>
-                </div>
-            </div>
+                    <!-- /.row -->
+                  </div><!-- /.container-fluid -->
+              </div>
           </div>
-
         </div>
+
       </div>
-    </div>  
-  </section>
+    </div>
+  </div>
+</section>
   <!-- =========================end information==================================== -->
 
 
@@ -533,10 +497,12 @@
                 <strong><i class="fas fa-cog"></i> SCAN OPTIONS</strong>
                 </p>
                 <p align="center">
-                  <a href="../static_analyzer/?checksum={{ md5 }}&amp;name={{ file_name }}&amp;type=zip&amp;rescan=1" class="btn btn-info" role="button"><i class="fa fa-sync"></i> Rescan</a>
-                  <a id="supbtn" onclick="list_suppressions()" role="button" class="btn btn-primary" data-target="#sup_list" data-toggle="modal" href="#"><i class="fa fa-list"></i> Manage Suppressions</a>
-                  <a target="_blank" href="../manifest_view/?md5={{ md5 }}&amp;type={{ app_type }}&amp;bin=0" role="button" class="btn btn-primary"><i class="fa fa-eye"></i>  View AndroidManifest.xml</a>
+                  <a href="{% url 'static_analyzer' checksum=md5 %}?rescan=1" class="btn btn-info" role="button"><i class="fa fa-sync"></i> Rescan</a>
+                  <a id="supbtn" onclick="list_suppressions()" role="button" class="btn btn-primary" data-target="#sup_list" data-toggle="modal" href="#"><i class="fa fa-table"></i> Manage Suppressions</a>
+                  <a target="_blank" href="{% url "manifest_view" checksum=md5 %}?type={{ app_type }}" role="button" class="btn btn-primary"><i class="fa fa-eye"></i>  View AndroidManifest.xml</a>
                   <a href="{% url "tree_view" %}?md5={{ md5 }}&amp;type=java" class="btn btn-info" role="button"><i class="fa fa-code"></i> View Source</a>
+                  <button type="button" class="btn btn-warning" data-toggle="modal" data-target=".scan-logs-mdl"><i class="fa fa-list" aria-hidden="true"></i> Scan Logs</button>
+                  <a href="{% url "download_binary" checksum=md5 %}" class="btn btn-warning"> <i class="fa fa-download"></i> Download ZIP</a>
                 </p>
               </div>
             </div><!-- /.card -->
@@ -564,6 +530,7 @@
                               <th>STATUS</th>
                               <th>INFO </th>
                               <th>DESCRIPTION</th>
+                              <th>CODE MAPPINGS</th>
                           </tr>
                       </thead>
                       <tbody>
@@ -585,6 +552,25 @@
                           </td>
                           <td>{{ desc.info }}</td>
                           <td>{{ desc.description }}</td>
+                          <td>
+                            {% if perm in permission_mapping %}
+                              <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapseperm{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapseperm{{forloop.counter}}">
+                                Show Files
+                              </a>
+                              <div class="collapse" id="collapseperm{{forloop.counter}}">
+                                {% for k, v in permission_mapping.items %}
+                                  {% if k == perm %}
+                                    {% for file_path, lines in v.items %}
+                                      <small>
+                                        <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                                      </small>
+                                      </br>
+                                    {% endfor %}
+                                  {% endif %}
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                          </td>
                           </tr>
                           {% endfor %}
                       </tbody>
@@ -625,10 +611,17 @@
                     {{ details.metadata.description }}
                     </td>
                     <td>
-                    {% for file_path, lines in details.files.items %}
-                    <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
-                    <br/>
-                    {% endfor %}
+                      <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapseapi{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapseapi{{forloop.counter}}">
+                        Show Files
+                      </a>
+                      <div class="collapse" id="collapseapi{{forloop.counter}}">
+                        {% for file_path, lines in details.files.items %}
+                          <small>
+                            <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                          </small>
+                        </br>
+                        {% endfor %}
+                      </div>
                     </td>
                   </tr>    
                     {% endfor %} 
@@ -734,6 +727,42 @@
              <strong><i class="fas fa-lock"></i> NETWORK SECURITY</strong>
              </p>
               <div class="table-responsive">
+                {% if network_security and 'network_summary' in network_security and network_security.network_summary|length > 0%}
+                <div class="row">
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-danger">HIGH</span>
+                  <h5 class="description-header">{{ network_security.network_summary.high }}</h5>
+                  </div>
+                  </div>
+                  
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-warning"></i> WARNING</span>
+                  <h5 class="description-header">{{ network_security.network_summary.warning }}</h5>
+                  </div>
+                  
+                  </div>
+                  
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-info">INFO</span>
+                  <h5 class="description-header">{{ network_security.network_summary.info }}</h5>
+                  </div>
+                  
+                  </div>
+
+                  <div class="col-sm-3 col-6">
+                    <div class="description-block">
+                    <span class="text-success">SECURE</span>
+                    <h5 class="description-header">{{ network_security.network_summary.secure }}</h5>
+                    </div>
+                    
+                    </div>
+                    
+                  
+                  </div>
+                  {% endif %}
                 <table id="table_network" class="table table-bordered table-hover table-striped">
                       <thead>
                       <tr>
@@ -744,8 +773,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                                      
-                    {% for item in network_security %}
+                    {% if network_security and 'network_findings' in network_security %}
+                    {% for item in network_security.network_findings %}
                       <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>
@@ -770,8 +799,11 @@
    
                        </tr>
                      {% endfor %}
+                     {% endif %}
                     </tbody>
                   </table>
+                 
+                    
                   </div>
           </div>
         </div><!-- /.card -->
@@ -792,6 +824,42 @@
              <strong><i class="fas fa-search"></i> MANIFEST ANALYSIS</strong>
              </p>
               <div class="table-responsive">
+                {% if manifest_analysis and 'manifest_summary' in manifest_analysis and manifest_analysis.manifest_summary|length > 0%}
+                <div class="row">
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-danger">HIGH</span>
+                  <h5 class="description-header">{{ manifest_analysis.manifest_summary.high }}</h5>
+                  </div>
+                  </div>
+                  
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-warning"></i> WARNING</span>
+                  <h5 class="description-header">{{ manifest_analysis.manifest_summary.warning }}</h5>
+                  </div>
+                  
+                  </div>
+                  
+                  <div class="col-sm-3 col-6">
+                  <div class="description-block border-right">
+                  <span class="text-info">INFO</span>
+                  <h5 class="description-header">{{ manifest_analysis.manifest_summary.info }}</h5>
+                  </div>
+                  
+                  </div>
+
+                  <div class="col-sm-3 col-6">
+                    <div class="description-block">
+                    <span class="text-disabled">SUPPRESSED</span>
+                    <h5 class="description-header">{{ manifest_analysis.manifest_summary.suppressed }}</h5>
+                    </div>
+                    
+                    </div>
+                    
+                  
+                  </div>
+                  {% endif %}
                 <table id="table_manifest" class="table table-bordered table-hover table-striped">
                       <thead>
                       <tr>
@@ -803,8 +871,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                                      
-                    {% for item in manifest_analysis %}
+                      {% if manifest_analysis and 'manifest_findings' in manifest_analysis %}
+                      {% for item in manifest_analysis.manifest_findings %}
                       <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>
@@ -837,8 +905,11 @@
                         </td>
                        </tr>
                      {% endfor %}
+                     {% endif %}
                     </tbody>
                   </table>
+                 
+
                   </div>
           </div>
         </div><!-- /.card -->
@@ -859,6 +930,50 @@
              <strong><i class="fas fa-code"></i> CODE ANALYSIS</strong>
              </p>
               <div class="table-responsive">
+                {% if code_analysis and 'summary' in code_analysis and code_analysis.summary|length > 0 %}
+            <div class="row">
+              <div class="col-sm-2 col-6">
+              <div class="description-block border-right">
+              <span class="text-danger">HIGH</span>
+              <h5 class="description-header">{{ code_analysis.summary.high }}</h5>
+              </div>
+              </div>
+              
+              <div class="col-sm-2 col-6">
+              <div class="description-block border-right">
+              <span class="text-warning"></i> WARNING</span>
+              <h5 class="description-header">{{ code_analysis.summary.warning }}</h5>
+              </div>
+              
+              </div>
+              
+              <div class="col-sm-2 col-6">
+              <div class="description-block border-right">
+              <span class="text-info">INFO</span>
+              <h5 class="description-header">{{ code_analysis.summary.info }}</h5>
+              </div>
+              
+              </div>
+              
+              <div class="col-sm-2 col-6">
+                <div class="description-block border-right">
+                <span class="text-success">SECURE</span>
+                <h5 class="description-header">{{ code_analysis.summary.secure }}</h5>
+                </div>
+                
+                </div>
+
+              <div class="col-sm-2 col-6">
+                <div class="description-block">
+                <span class="text-disabled">SUPPRESSED</span>
+                <h5 class="description-header">{{ code_analysis.summary.suppressed }}</h5>
+                </div>
+                
+                </div>
+                
+              
+              </div>
+              {% endif %}
                 <table id="table_code" class="table table-bordered table-hover table-striped">
                     <thead>
                     <tr>
@@ -871,7 +986,8 @@
                   </tr>
                     </thead>
                     <tbody>
-               {% for rule, details in code_analysis.items %}
+                  {% if code_analysis and 'findings' in code_analysis %}
+                  {% for rule, details in code_analysis.findings.items %}
                   <tr>
                   <td>{{ forloop.counter }}</td>
                   <td>
@@ -912,10 +1028,27 @@
                       {% if details.metadata.masvs %}</br> <strong>OWASP MASVS: </strong>{{ details.metadata.masvs }}{% endif %}
                   </td>
                   <td>
-                   {% for file_path, lines in details.files.items %}
-                   <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
-                  <br/>
-                  {% endfor %}
+                  {% if details.files|length < 4 %}
+                    {% for file_path, lines in details.files.items %}
+                      <small>
+                        <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                      </small>
+                    </br>
+                    {% endfor %}
+                  {% else %}
+                    <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapsecode{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapsecode{{forloop.counter}}">
+                      Show Files
+                    </a>
+                    <div class="collapse" id="collapsecode{{forloop.counter}}">
+                      {% for file_path, lines in details.files.items %}
+                        <small>
+                          <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                        </small>
+                      </br>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+
                   </td>
                   <td>
 
@@ -933,8 +1066,11 @@
                   </td>
                 </tr>    
               {% endfor %} 
+              {% endif %}
               </tbody>
             </table>
+            
+
             </div>
           </div>
         </div><!-- /.card -->
@@ -1038,6 +1174,180 @@
     </div>
 </section>
  <!-- ===========================end file analysis ================================== -->
+ <a id="firebase" class="anchor"></a>
+ <section class="content">
+   <div class="container-fluid">
+     <div class="row">
+         <div class="col-lg-12">
+         <div class="card">
+           <div class="card-body">
+             <p>
+              <strong><i class="fas fa-database"></i> FIREBASE DATABASE ANALYSIS</strong>
+              </p>
+               <div class="table-responsive">
+              <table id="table_firebase" class="table table-bordered table-hover table-striped">
+                <thead>
+                  <tr>
+                      <th>TITLE</th>
+                      <th>SEVERITY</th>
+                      <th>DESCRIPTION</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  {% for find in firebase_urls %}
+                  <tr>
+                  <td>{{ find.title }}</td>
+                  <td>
+                  {% if find.severity == 'high' %}
+                    <span class="badge bg-danger">high</span>
+                  {% elif find.severity  == 'secure' %}
+                    <span class="badge bg-success">secure</span>
+                  {% elif find.severity  == 'warning' %}
+                    <span class="badge bg-warning">warning</span>
+                  {% elif find.severity  == 'info' %}
+                    <span class="badge bg-info">info</span>
+                  {% endif %}
+                  </td>
+                  <td>{{ find.description }}</td>
+                  </tr>
+                  {% endfor %}
+              </tbody>
+             </table>
+             </div>
+           </div>
+         </div><!-- /.card -->
+         </div>
+         <!-- end row -->
+         </div>
+     </div>
+ </section>
+  <!-- ===========================end firebase db analysis ================================== -->
+  <a id="behaviour" class="anchor"></a>
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row">
+          <div class="col-lg-12">
+          <div class="card">
+            <div class="card-body">
+              <p>
+               <strong><i class="fas fa-sitemap"></i> BEHAVIOUR ANALYSIS</strong>
+               </p>
+               <div class="table-responsive">
+
+                <table id="table_code" class="table table-bordered table-hover table-striped">
+                  <thead>
+                  <tr>
+                    <th>RULE ID</th>
+                    <th>BEHAVIOUR</th>
+                    <th>LABEL</th>
+                    <th>FILES</th>
+                </tr>
+                  </thead>
+                    <tbody>
+             {% for rule, details in behaviour.items %}
+                <tr>
+                <td>{{ rule }}</td>
+                <td>
+                  {{ details.metadata.description }}
+                </td>
+                <td> {% for lbl in details.metadata.label %} 
+                  <span class="badge bg-warning">{{ lbl }}</span>
+                {% endfor %}
+                </td>
+                <td>
+                  {% if details.files|length < 4 %}
+                    {% for file_path, lines in details.files.items %}
+                      <small>
+                        <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                      </small>
+                    </br>
+                    {% endfor %}
+                  {% else %}
+                    <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapsebehaviour{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapsebehaviour{{forloop.counter}}">
+                      Show Files
+                    </a>
+                    <div class="collapse" id="collapsebehaviour{{forloop.counter}}">
+                      {% for file_path, lines in details.files.items %}
+                        <small>
+                          <a href="{% url "view_source" %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type={{app_type}}&amp;lines={{ lines }}"> {{ file_path }}</a>
+                        </small>
+                      </br>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>    
+            {% endfor %}
+            </tbody>
+          </table>
+              </div>
+            </div>
+          </div><!-- /.card -->
+          </div>
+          <!-- end row -->
+          </div>
+      </div>
+  </section>
+<!-- ===========================end behaviour analysis ================================== -->
+ 
+ <a id="malware_permissions" class="anchor"></a>
+<section class="content">
+  <div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-12">
+        <div class="card">
+          <div class="card-body">
+            <p>
+             <strong><i class="fa fa-braille"></i> ABUSED PERMISSIONS</strong>
+             </p>
+              <div class="table-responsive">
+                
+                {% if malware_permissions %}
+              
+                <div class="container">
+                  <div class="row">
+                    <div class="col-sm">
+                <div class="progress-group">
+                  <strong>Top Malware Permissions</strong>
+                  <span class="float-right"><b>{{ malware_permissions.top_malware_permissions | length}}</b>/{{malware_permissions.total_malware_permissions}}</span>
+                  <div class="progress progress-sm">
+                  <div class="progress-bar bg-danger" aria-valuemin="0" style="width: {% widthratio malware_permissions.top_malware_permissions|length malware_permissions.total_malware_permissions 100 %}%;" aria-valuenow="{{ malware_permissions.top_malware_permissions | length}}" aria-valuemax="{{malware_permissions.total_malware_permissions}}"></div>
+                </div>
+                  <span class="product-description">
+                      {{ malware_permissions.top_malware_permissions | join:", "}}
+                    </span>  
+                </div>
+              </div>
+              <div class="col-sm">
+                <div class="progress-group">
+                  <strong>Other Common Permissions</strong>
+                  <span class="float-right"><b>{{ malware_permissions.other_abused_permissions | length}}</b>/{{ malware_permissions.total_other_permissions}}</span>
+                  <div class="progress progress-sm">
+                  <div class="progress-bar bg-warning" aria-valuemin="0" style="width: {% widthratio malware_permissions.other_abused_permissions|length malware_permissions.total_other_permissions 100 %}%;" aria-valuenow="{{ malware_permissions.other_abused_permissions | length}}" aria-valuemax="{{ malware_permissions.total_other_permissions}}"></div>
+                </div>
+                <span class="product-description">
+                  {{ malware_permissions.other_abused_permissions | join:", "}}
+                  </span>
+                  </div>
+                  </div>
+                 </div>
+                </div>
+                <hr>
+                <p>
+                  <strong>Malware Permissions</strong> are the top permissions that are widely abused by known malware. 
+                  <br/>
+                  <strong>Other Common Permissions</strong> are permissions that are commonly abused by known malware. 
+                </p>
+                 {% endif %}
+            </div>
+          </div>
+        </div><!-- /.card -->
+        </div>
+        <!-- end row -->
+        </div>
+    </div>
+</section>
+ <!-- ===========================end malware permissions  ================================== -->
  <style>
   #chartdiv {
   width: 100%;
@@ -1058,6 +1368,35 @@
               <div class="table-responsive">
                 <div id="chartdiv"></div>
             </div>
+            
+            <div class="table-responsive">
+              {% if domains %}
+              <p></br>This app may communicate with the following OFAC sanctioned list of countries.</p>
+             <table id="table_ofac" class="table table-bordered table-hover table-striped">
+                  <thead>
+                  <tr>
+                     <th>DOMAIN</th>
+                     <th>COUNTRY/REGION</th>
+                  </tr>
+                 </thead>
+                 <tbody>
+                 {% for domain, details in domains.items %}
+                 {% if details|key:"ofac" == True %}
+                  <tr><td>{{domain}}</td>
+                  <td>
+                    <strong>IP: </strong>{{details|key:"geolocation"|key:"ip"}}  <br/>
+                    <strong>Country: </strong>{{details|key:"geolocation"|key:"country_long"}} <br/>
+                    <strong>Region: </strong>{{details|key:"geolocation"|key:"region"}} <br/>
+                    <strong>City: </strong>{{details|key:"geolocation"|key:"city"}} <br/>
+                  </td>
+                  </tr>
+                  {% endif %}
+                  {% endfor %}
+                </tbody>
+            </table>
+             {% endif %}
+            </div>
+
           </div>
         </div><!-- /.card -->
         </div>
@@ -1173,53 +1512,6 @@
     </div>
 </section>
  <!-- ===========================end urls ================================== -->
-<a id="firebase" class="anchor"></a>
-<section class="content">
-  <div class="container-fluid">
-    <div class="row">
-        <div class="col-lg-12">
-        <div class="card">
-          <div class="card-body">
-            <p>
-             <strong><i class="fas fa-database"></i> FIREBASE DATABASE</strong>
-             </p>
-              <div class="table-responsive">
-               {% if firebase_urls %} 
-             <table id="table_firebase" class="table table-bordered table-hover table-striped">
-                  <thead>
-                  <tr>
-                     <th>FIREBASE URL</th>
-                     <th>DETAILS</th>
-                  </tr>
-                 </thead>
-               
-                 <tbody>
-                  {% for item in firebase_urls %}
-                    <tr>
-                       <td>
-                       {{ item.url }}
-                        </td>
-                       <td>
-                         {% if item.open %}
-                          <span class="badge bg-danger">high</span><br/>Firebase Database is exposed publicly.
-                        {% else %}
-                         <span class="badge bg-primary">info</span><br/>App talks to a Firebase database.
-                         {% endif %}
-                       </td>
-                    </tr>
-                  {% endfor %} 
-               </tbody>
-            </table>
-             {% endif %}
-            </div>
-          </div>
-        </div><!-- /.card -->
-        </div>
-        <!-- end row -->
-        </div>
-    </div>
-</section>
- <!-- ===========================end firebase db ================================== -->
 <a id="emails" class="anchor"></a>
 <section class="content">
   <div class="container-fluid">
@@ -1310,31 +1602,49 @@
      </div>
  </section>
   <!-- ===========================end trackers ================================== -->
-<a id="strings" class="anchor"></a>
-<section class="content">
-  <div class="container-fluid">
-    <div class="row">
-        <div class="col-lg-12">
-        <div class="card">
-          <div class="card-body">
-             <p>
-             <strong><i class="fas fa-font"></i> STRINGS</strong>
-             </p>
-               <div class="list-group">
-                  <p>  
-                    {% for val in strings %}
-                     {{ val }}<br/>
-                    {% endfor %}                  
-                  </p>
+  <a id="secrets" class="anchor"></a>
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row">
+          <div class="col-lg-12">
+          <div class="card">
+            <div class="card-body">
+               <p>
+               <strong><i class="fas fa-key"></i> POSSIBLE HARDCODED SECRETS</strong>
+               </p>
+                 <div class="list-group">
+                  {% include 'base/list.html' with list=secrets type="secrets" limit=100 %}
+                </div>
               </div>
             </div>
+          </div><!-- /.card -->
           </div>
-        </div><!-- /.card -->
-        </div>
-        <!-- end row -->
-        </div>
-</section>
- <!-- ===========================end strings ================================== -->
+          <!-- end row -->
+          </div>
+  </section>
+   <!-- ===========================end secrets ================================== -->
+  <a id="strings" class="anchor"></a>
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row">
+          <div class="col-lg-12">
+          <div class="card">
+            <div class="card-body">
+               <p>
+               <strong><i class="fas fa-font"></i> STRINGS</strong>
+               </p>
+                 <div class="list-group">
+                   <p><strong>From Code</strong></p>
+                   {% include 'base/list.html' with list=strings.strings_code type="strings" limit=100 %}
+                </div>
+              </div>
+            </div>
+          </div><!-- /.card -->
+          </div>
+          <!-- end row -->
+          </div>
+  </section>
+   <!-- ===========================end strings ================================== -->
 <a id="activities" class="anchor"></a>
 <section class="content">
   <div class="container-fluid">
@@ -1346,11 +1656,7 @@
              <strong><i class="fa fa-language"></i> ACTIVITIES</strong>
              </p>
                <div class="list-group">
-                  <p>  
-                    {% for act in activities %}
-                      {{ act}} <br/>
-                    {% endfor %}               
-                  </p>
+                  {% include 'base/list.html' with list=activities type="activities" limit=50 %}
               </div>
             </div>
           </div>
@@ -1371,11 +1677,7 @@
              <strong><i class="fa fa-cogs"></i> SERVICES</strong>
              </p>
                <div class="list-group">
-                  <p>  
-                     {% for srv in services %}
-                        {{ srv}} <br/>
-                    {% endfor %}                  
-                  </p>
+                {% include 'base/list.html' with list=services type="services" limit=50 %}
               </div>
             </div>
           </div>
@@ -1396,11 +1698,7 @@
              <strong><i class="fa fa-assistive-listening-systems"></i> RECEIVERS</strong>
              </p>
                <div class="list-group">
-                  <p>  
-                      {% for rcv in receivers %}
-                    {{ rcv}} <br/>
-                  {% endfor %}               
-                  </p>
+                 {% include 'base/list.html' with list=receivers type="receivers" limit=50%}
               </div>
             </div>
           </div>
@@ -1422,11 +1720,7 @@
              <strong><i class="fa fa-database"></i> PROVIDERS</strong>
              </p>
                <div class="list-group">
-                  <p>  
-                  {% for prv in providers %}
-                    {{ prv }} <br/>
-                  {% endfor %}                            
-                  </p>
+                 {% include 'base/list.html' with list=providers type="providers" limit=50 %}
               </div>
             </div>
           </div>
@@ -1447,11 +1741,7 @@
             <strong><i class="fab fa-buffer"></i> LIBRARIES</strong>
             </p>
               <div class="list-group">
-                <p>  
-                {% for lib in libraries %}
-                  {{ lib }} <br/>
-                {% endfor %}                                       
-                </p>
+                {% include 'base/list.html' with list=libraries type="libraries" limit=50 %}
             </div>
           </div>
         </div>
@@ -1461,6 +1751,28 @@
       </div>
 </section>
  <!-- ===========================end libraries ================================== -->
+ <a id="sbom" class="anchor"></a>
+ <section class="content">
+   <div class="container-fluid">
+   <div class="row">
+       <div class="col-lg-12">
+       <div class="card">
+         <div class="card-body">
+             <p>
+             <strong><i class="fa fa-archive"></i> SBOM</strong>
+             </p>
+               <div class="list-group">
+                 {% include 'base/list.html' with list=sbom.sbom_versioned type="Versioned Packages" limit=100 %}
+                 {% include 'base/list.html' with list=sbom.sbom_packages type="Packages" limit=100 %}
+             </div>
+           </div>
+         </div>
+       </div><!-- /.card -->
+       </div>
+       <!-- end row -->
+       </div>
+ </section>
+  <!-- ===========================end sbom ================================== -->
 <a id="files" class="anchor"></a>
 <section class="content">
   <div class="container-fluid">
@@ -1472,11 +1784,7 @@
             <strong><i class="far fa-copy"></i> FILES</strong>
             </p>
               <div class="list-group">
-                <p>  
-                {% for file in files %}
-                  {{ file}} <br/>
-                {% endfor %}                                      
-                </p>
+                {% include 'base/list.html' with list=files type="files" limit=200 %}
             </div>
           </div>
         </div>
@@ -1525,8 +1833,10 @@
 {% block extra_scripts %}
 <script src="{% static "adminlte/plugins/sweetalert2/sweetalert2.min.js" %}"></script>
 <!-- DataTables -->
-<script src="{% static "adminlte/plugins/datatables/jquery.dataTables.min.js" %} "></script>
-<script src="{% static "adminlte/plugins/datatables-bs4/dataTables.bootstrap4.min.js" %}"></script>
+<script src="{% static "datatables/js/pdfmake.min.js" %}"></script>
+<script src="{% static "datatables/js/vfs_fonts.js" %}"></script>
+<script src="{% static "datatables/js/datatables.combined.min.js" %}"></script>
+<script src="{% static "others/js/datatables_init.js" %}"></script>
 <script src="{% static "amcharts/core.js" %}"></script>
 <script src="{% static "amcharts/maps.js" %}"></script>
 <script src="{% static "amcharts/worldIndiaLow.js" %}"></script>
@@ -1540,23 +1850,14 @@
 <script src="{% static "others/js/suppression.js" %}"></script>
 <script>
 
+  // Remove rescan parameter
+  window.history.replaceState({}, '', window.location.pathname);
+
   // Globals
   const csrf = '{{ csrf_token }}'
   const pkg = '{{ package_name }}'
   const hash = '{{md5}}'
 
-  $(function () {
-    // Datatable
-    $('table').DataTable({
-      "paging": true,
-      "lengthChange": false,
-      "searching": true,
-      "ordering": true,
-      "info": true,
-      "autoWidth": true,
-      "responsive": true,
-    });
-  });
   // Navbar Active
     $(".nav-link").on("click", function() {
     $(".nav-link").removeClass("active");
@@ -1638,4 +1939,37 @@
   ];
   </script>
   
+{% endblock %}
+{% block scan_logs %}
+<table id="scan_logs" class="table table-bordered table-hover table-striped">
+    <tr>
+        <th>Timestamp</th>
+        <th>Event</th>
+        <th>Error</th>
+    </tr>
+<tbody>
+  {% for log in logs %}
+  <tr>
+    <td>
+      {{log.timestamp}}
+    </td>
+    <td>
+      {{log.status}}
+    </td>
+    <td>
+      {% if not log.exception %}
+      <p class="text-success">
+        OK
+      </p>
+      {% else %}
+      <p class="text-danger">
+      {{log.exception}}
+       </p>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</tbody>
+</table>
+
 {% endblock %}

@@ -7,10 +7,12 @@ import re
 from django.conf import settings
 from django.views.decorators.http import require_http_methods
 
-from mobsf.DynamicAnalyzer.views.android.operations import (
-    get_package_name,
+from mobsf.DynamicAnalyzer.views.common.shared import (
     invalid_params,
     send_response,
+)
+from mobsf.DynamicAnalyzer.views.android.operations import (
+    get_package_name,
 )
 from mobsf.DynamicAnalyzer.views.android.environment import (
     Environment,
@@ -26,18 +28,30 @@ from mobsf.DynamicAnalyzer.tools.webproxy import (
     stop_httptools,
 )
 from mobsf.MobSF.utils import (
+    cmd_injection_check,
     is_md5,
     python_list,
 )
 from mobsf.StaticAnalyzer.models import StaticAnalyzerAndroid
+from mobsf.MobSF.views.authentication import (
+    login_required,
+)
+from mobsf.MobSF.views.authorization import (
+    Permissions,
+    permission_required,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # AJAX
+
+
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def start_activity(request, api=False):
-    """Lunch a specific activity."""
+    """Launch a specific activity."""
     try:
         env = Environment()
         activity = request.POST['activity']
@@ -64,8 +78,37 @@ def start_activity(request, api=False):
         data = {'status': 'failed', 'message': str(exp)}
     return send_response(data, api)
 
+# AJAX
+
+
+@login_required
+@permission_required(Permissions.SCAN)
+@require_http_methods(['POST'])
+def start_deeplink(request, api=False):
+    """Launch a specific deeplink."""
+    try:
+        env = Environment()
+        url = request.POST['url']
+        md5_hash = request.POST['hash']
+
+        valid_md5 = is_md5(md5_hash)
+        if cmd_injection_check(url) or not valid_md5:
+            return invalid_params(api)
+        env.adb_command(
+            ['am', 'start', '-a',
+             'android.intent.action.VIEW',
+             '-d', url], True)
+        data = {'status': 'ok'}
+    except Exception as exp:
+        logger.exception('Start Activity')
+        data = {'status': 'failed', 'message': str(exp)}
+    return send_response(data, api)
 
 # AJAX
+
+
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def activity_tester(request, api=False):
     """Exported & non exported activity Tester."""
@@ -127,6 +170,8 @@ def activity_tester(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def download_data(request, api=False):
     """Download Application Data from Device."""
@@ -143,8 +188,7 @@ def download_data(request, api=False):
                     'message': 'App details not found in database'}
             return send_response(data, api)
         apk_dir = os.path.join(settings.UPLD_DIR, md5_hash + '/')
-        httptools_url = get_http_tools_url(request)
-        stop_httptools(httptools_url)
+        stop_httptools(get_http_tools_url(request))
         files_loc = '/data/local/'
         logger.info('Archiving files created by app')
         env.adb_command(['tar', '-cvf', files_loc + package + '.tar',
@@ -163,6 +207,8 @@ def download_data(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def collect_logs(request, api=False):
     """Collecting Data and Cleanup."""
@@ -207,6 +253,8 @@ def collect_logs(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def tls_tests(request, api=False):
     """Perform TLS tests."""

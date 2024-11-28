@@ -10,6 +10,7 @@ from django.shortcuts import render
 
 from mobsf.MobSF import settings
 from mobsf.MobSF.utils import (
+    is_md5,
     print_n_send_error_response,
 )
 from mobsf.StaticAnalyzer.models import (
@@ -20,6 +21,9 @@ from mobsf.StaticAnalyzer.views.android.db_interaction import (
     get_context_from_db_entry as adb)
 from mobsf.StaticAnalyzer.views.ios.db_interaction import (
     get_context_from_db_entry as idb)
+from mobsf.MobSF.views.authentication import (
+    login_required,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,7 @@ logger = logging.getLogger(__name__)
 def common_fields(findings, data):
     """Common Fields for Android and iOS."""
     # Code Analysis
-    for cd in data['code_analysis'].values():
+    for cd in data['code_analysis']['findings'].values():
         if cd['metadata']['severity'] == 'good':
             sev = 'secure'
         else:
@@ -68,6 +72,9 @@ def common_fields(findings, data):
     cert_files = None
     cfp = []
     for fa in data['file_analysis']:
+        if isinstance(fa, str):
+            # FA is being used by so/dylib
+            continue
         if 'Cert' in fa.get('finding', ''):
             cfp = fa['files']
             break
@@ -99,17 +106,28 @@ def common_fields(findings, data):
                 'description': str(value['geolocation']),
                 'section': 'domains',
             })
+        if value.get('ofac') and value['ofac'] is True:
+            country = ''
+            if value['geolocation'].get('country_long'):
+                country = value['geolocation'].get('country_long')
+            elif value['geolocation'].get('region'):
+                country = value['geolocation'].get('region')
+            elif value['geolocation'].get('city'):
+                country = value['geolocation'].get('city')
+            findings['hotspot'].append({
+                'title': ('App may communicate to a server '
+                          f'({domain}) in OFAC sanctioned country '
+                          f'({country})'),
+                'description': str(value['geolocation']),
+                'section': 'domains',
+            })
     # Firebase
     for fb in data['firebase_urls']:
-        if fb['open']:
-            fdb = fb['url']
-            findings['high'].append({
-                'title': 'Firebase DB is exposed publicly.',
-                'description': (
-                    f'The Firebase database at {fdb} is exposed'
-                    ' to internet without any authentication'),
-                'section': 'firebase',
-            })
+        findings[fb['severity']].append({
+            'title': fb['title'],
+            'description': fb['description'],
+            'section': 'firebase',
+        })
     # Trackers
     if 'trackers' in data['trackers']:
         findings['total_trackers'] = data['trackers']['total_trackers']
@@ -161,8 +179,10 @@ def common_fields(findings, data):
     warn = len(findings.get('warning'))
     sec = len(findings.get('secure'))
     total = high + warn + sec
-    score = int(100 - (
-        ((high * 1) + (warn * .5) - (sec * .2)) / total) * 100)
+    score = 0
+    if total > 0:
+        score = int(100 - (
+            ((high * 1) + (warn * .5) - (sec * .2)) / total) * 100)
     if score > 100:
         score = 100
     findings['security_score'] = score
@@ -186,7 +206,8 @@ def get_android_dashboard(context, from_ctx=False):
     else:
         data = adb(context)
     # Certificate Analysis
-    if 'certificate_findings' in data['certificate_analysis']:
+    if (data.get('certificate_analysis')
+            and 'certificate_findings' in data['certificate_analysis']):
         for i in data['certificate_analysis']['certificate_findings']:
             if i[0] == 'info':
                 continue
@@ -196,36 +217,40 @@ def get_android_dashboard(context, from_ctx=False):
                 'section': 'certificate',
             })
     # Network Security
-    for n in data['network_security']:
-        desc = '\n'.join(n['scope'])
-        desc = f'Scope:\n{desc}\n\n'
-        title_parts = n['description'].split('.', 1)
-        if len(title_parts) > 1:
-            desc += title_parts[1].strip()
-            title = title_parts[0]
-        else:
-            title = n['description']
-        findings[n['severity']].append({
-            'title': title,
-            'description': desc,
-            'section': 'network',
-        })
+    if (data.get('network_security')
+            and 'network_findings' in data['network_security']):
+        for n in data['network_security']['network_findings']:
+            desc = '\n'.join(n['scope'])
+            desc = f'Scope:\n{desc}\n\n'
+            title_parts = n['description'].split('.', 1)
+            if len(title_parts) > 1:
+                desc += title_parts[1].strip()
+                title = title_parts[0]
+            else:
+                title = n['description']
+            findings[n['severity']].append({
+                'title': title,
+                'description': desc,
+                'section': 'network',
+            })
     # Manifest Analysis
-    for m in data['manifest_analysis']:
-        if m['severity'] == 'info':
-            continue
-        title = m['title'].replace('<strong>', '')
-        title = title.replace('</strong>', '')
-        fmt = title.split('<br>', 1)
-        if len(fmt) > 1:
-            desc = fmt[1].replace('<br>', '') + '\n' + m['description']
-        else:
-            desc = m['description']
-        findings[m['severity']].append({
-            'title': fmt[0],
-            'description': desc,
-            'section': 'manifest',
-        })
+    if (data.get('manifest_analysis')
+            and 'manifest_findings' in data['manifest_analysis']):
+        for m in data['manifest_analysis']['manifest_findings']:
+            if m['severity'] == 'info':
+                continue
+            title = m['title'].replace('<strong>', '')
+            title = title.replace('</strong>', '')
+            fmt = title.split('<br>', 1)
+            if len(fmt) > 1:
+                desc = fmt[1].replace('<br>', '') + '\n' + m['description']
+            else:
+                desc = m['description']
+            findings[m['severity']].append({
+                'title': fmt[0],
+                'description': desc,
+                'section': 'manifest',
+            })
     common_fields(findings, data)
     findings['version_name'] = data.get('version_name', '')
     return findings
@@ -246,23 +271,27 @@ def get_ios_dashboard(context, from_ctx=False):
     else:
         data = idb(context)
     # Transport Security
-    for n in data['ats_analysis']:
-        findings[n['severity']].append({
-            'title': n['issue'],
-            'description': n['description'],
-            'section': 'network',
-        })
+    if (data.get('ats_analysis')
+            and 'ats_findings' in data['ats_analysis']):
+        for n in data['ats_analysis']['ats_findings']:
+            findings[n['severity']].append({
+                'title': n['issue'],
+                'description': n['description'],
+                'section': 'network',
+            })
     # Binary Code Analysis
-    for issue, cd in data['binary_analysis'].items():
-        if cd['severity'] == 'good':
-            sev = 'secure'
-        else:
-            sev = cd['severity']
-        findings[sev].append({
-            'title': issue,
-            'description': str(cd['detailed_desc']),
-            'section': 'binary',
-        })
+    if (data.get('binary_analysis')
+            and 'findings' in data['binary_analysis']):
+        for issue, cd in data['binary_analysis']['findings'].items():
+            if cd['severity'] == 'good':
+                sev = 'secure'
+            else:
+                sev = cd['severity']
+            findings[sev].append({
+                'title': issue,
+                'description': str(cd['detailed_desc']),
+                'section': 'binary',
+            })
     # Macho Analysis
     ma = data['macho_analysis']
     if ma:
@@ -317,9 +346,17 @@ def get_ios_dashboard(context, from_ctx=False):
     return findings
 
 
+@login_required
 def appsec_dashboard(request, checksum, api=False):
     """Provide data for appsec dashboard."""
     try:
+        if not is_md5(checksum):
+            # We need this check since checksum is not validated
+            # in REST API
+            return print_n_send_error_response(
+                request,
+                'Invalid Hash',
+                api)
         android_static_db = StaticAnalyzerAndroid.objects.filter(
             MD5=checksum)
         ios_static_db = StaticAnalyzerIOS.objects.filter(
@@ -333,7 +370,7 @@ def appsec_dashboard(request, checksum, api=False):
                 return {'not_found': 'Report not found or supported'}
             else:
                 msg = 'Report not found or supported'
-                return print_n_send_error_response(request, msg)
+                return print_n_send_error_response(request, msg, api)
         context['version'] = settings.MOBSF_VER
         context['title'] = 'AppSec Scorecard'
         context['efr01'] = True if settings.EFR_01 == '1' else False

@@ -7,7 +7,6 @@ PDF Generation
 import json
 import logging
 import os
-import re
 import platform
 
 from django.http import HttpResponse
@@ -16,6 +15,7 @@ from django.template.loader import get_template
 import mobsf.MalwareAnalyzer.views.VirusTotal as VirusTotal
 from mobsf.MobSF import settings
 from mobsf.MobSF.utils import (
+    is_md5,
     print_n_send_error_response,
     upstream_proxy,
 )
@@ -38,6 +38,9 @@ from mobsf.StaticAnalyzer.views.ios.db_interaction import (
     get_context_from_db_entry as idb)
 from mobsf.StaticAnalyzer.views.windows.db_interaction import (
     get_context_from_db_entry as wdb)
+from mobsf.MobSF.views.authentication import (
+    login_required,
+)
 
 logger = logging.getLogger(__name__)
 try:
@@ -50,19 +53,15 @@ logger = logging.getLogger(__name__)
 ctype = 'application/json; charset=utf-8'
 
 
-def pdf(request, api=False, jsonres=False):
+@login_required
+def pdf(request, checksum, api=False, jsonres=False):
     try:
-        if api:
-            checksum = request.POST['hash']
-        else:
-            checksum = request.GET['md5']
-        hash_match = re.match('^[0-9a-f]{32}$', checksum)
-        if not hash_match:
+        if not is_md5(checksum):
             if api:
-                return {'error': 'Invalid scan hash'}
+                return {'error': 'Invalid Hash'}
             else:
                 return HttpResponse(
-                    json.dumps({'md5': 'Invalid scan hash'}),
+                    json.dumps({'md5': 'Invalid Hash'}),
                     content_type=ctype, status=500)
         # Do Lookups
         android_static_db = StaticAnalyzerAndroid.objects.filter(
@@ -94,8 +93,8 @@ def pdf(request, api=False, jsonres=False):
                 settings.UPLD_DIR,
                 checksum + '/',
                 checksum + ext)
-            vt = VirusTotal.VirusTotal()
-            context['virus_total'] = vt.get_result(app_bin, checksum)
+            vt = VirusTotal.VirusTotal(checksum)
+            context['virus_total'] = vt.get_result(app_bin)
         # Get Local Base URL
         proto = 'file://'
         host_os = 'nix'

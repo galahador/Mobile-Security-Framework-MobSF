@@ -5,9 +5,8 @@
      {% endblock %}
     {% block extra_css %}
     <!-- DataTables -->
+    <link href="{% static "datatables/css/datatables.combined.min.css" %}" rel="stylesheet">
     <link href="{% static "adminlte/plugins/sweetalert2/sweetalert2.min.css" %}" rel="stylesheet">
-    <link rel="stylesheet" href="{% static "adminlte/plugins/datatables-bs4/dataTables.bootstrap4.min.css" %}">
-
     <style type="text/css" media="print">
         @page { size: landscape; }
         @media print {
@@ -114,6 +113,12 @@
                   <p>File Analysis</p>
                 </a>
               </li>
+              <li class="nav-item">
+                <a href="#firebase" class="nav-link">
+                  <i class="fas fa-database nav-icon"></i>
+                  <p>Firebase Analysis</p>
+                </a>
+              </li>
             </ul>
           </li>
            <li class="nav-item has-treeview">
@@ -155,12 +160,6 @@
                 </a>
               </li>
               <li class="nav-item">
-                <a href="#firebase" class="nav-link">
-                  <i class="fas fa-database nav-icon"></i>
-                  <p>Firebase DB</p>
-                </a>
-              </li>
-              <li class="nav-item">
                 <a href="#emails" class="nav-link">
                   <i class="fas fa-envelope nav-icon"></i>
                   <p>Emails</p>
@@ -178,6 +177,12 @@
                   <p>Hardcoded Secrets</p>
                 </a>
               </li>
+              <li class="nav-item">
+                <a href="#strings" class="nav-link">
+                  <i class="fas fa-font nav-icon"></i>
+                  <p>Strings</p>
+                </a>
+              </li>
             </ul>
           </li>
            <li class="nav-item">
@@ -189,7 +194,7 @@
             </a>
           </li>
             <li class="nav-item">
-              <a href="../pdf/?md5={{ md5 }}" class="nav-link">
+              <a href="{% url "pdf" checksum=md5 %}" class="nav-link">
               <i class="nav-icon fas fa-file-pdf"></i>
               <p>
                 PDF Report
@@ -239,7 +244,7 @@
                 <div class="row">
                 <div class="col-2">
                   <p><strong><i class="fas fa-check-double"></i> APP SCORES</strong></p>
-                  <img id="app_icon" src="{% if not appstore_details.error %}{{appstore_details.icon}}{% elif icon_found %}/download/{{ md5 }}-icon.png{% else %}{% static 'img/no_icon.png' %}{% endif %}"/>
+                  <img id="app_icon" src="{% if not appstore_details.error %}{{appstore_details.icon}}{% elif icon_path %}/download/{{ icon_path }}{% else %}{% static 'img/no_icon.png' %}{% endif %}"/>
                   <p>
                   {% if average_cvss %}
                   <span class="badge bg-info">Average CVSS</span> <strong>{{ average_cvss }} </strong><br/>
@@ -251,7 +256,7 @@
                     <span class="badge bg-success">Trackers Detection</span> <strong>{{ trackers.detected_trackers }}/{{ trackers.total_trackers }}</strong><br/>
                   {% endif %}
                 </p>
-                  <p> <a href="../appsec_dashboard/{{ md5 }}/" class="btn btn-outline-primary btn-sm" role="button"><i class="fas fa-user-shield"></i> MobSF Scorecard</a></p>
+                  <p> <a href="{% url 'appsec_dashboard' checksum=md5 %}" class="btn btn-outline-primary btn-sm" role="button"><i class="fas fa-user-shield"></i> MobSF Scorecard</a></p>
                 </div>
 
                 <div class="col-5">
@@ -361,9 +366,11 @@
                 <strong><i class="fas fa-cog"></i> SCAN OPTIONS</strong>
                 </p>
                 <p align="center">
-                  <a href="../static_analyzer_ios/?checksum={{ md5 }}&amp;name={{ file_name }}&amp;type=ios&amp;rescan=1" class="btn btn-info" role="button"><i class="fa fa-sync"></i> Rescan</a>
-                  <a id="supbtn" onclick="list_suppressions()" role="button" class="btn btn-primary" data-target="#sup_list" data-toggle="modal" href="#"><i class="fa fa-list"></i> Manage Suppressions</a>
-                  <a data-target="#mplist" role="button" class="btn btn-primary" data-toggle="modal" href="#"><i class="fa fa-list"></i> View Info.plist</a>
+                  <a href="{% url 'static_analyzer_ios' checksum=md5 %}?rescan=1" class="btn btn-info" role="button"><i class="fa fa-sync"></i> Rescan</a>
+                  <a id="supbtn" onclick="list_suppressions()" role="button" class="btn btn-primary" data-target="#sup_list" data-toggle="modal" href="#"><i class="fa fa-table"></i> Manage Suppressions</a>
+                  <a data-target="#mplist" role="button" class="btn btn-primary" data-toggle="modal" href="#"><i class="fa fa-eye"></i> View Info.plist</a>
+                 <button type="button" class="btn btn-warning" data-toggle="modal" data-target=".scan-logs-mdl"><i class="fa fa-list" aria-hidden="true"></i> Scan Logs</button>
+                 <a href="{% url "download_binary" checksum=md5 %}" class="btn btn-warning"> <i class="fa fa-download"></i> Download ZIP</a>
                </p>
               </div>
             </div><!-- /.card -->
@@ -515,10 +522,17 @@
                   {{ details.metadata.description }}
                   </td>
                   <td>
-                  {% for file_path, lines  in details.files.items %}
-                   <a href="../view_file_ios/?file={{ file_path }}&amp;md5={{ md5 }}&amp;type=ios&amp;lines={{ lines }}"> {{ file_path }}</a>
-                  </br>
-                  {% endfor %}
+                  <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapseapi{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapseapi{{forloop.counter}}">
+                    Show Files
+                  </a>
+                  <div class="collapse" id="collapseapi{{forloop.counter}}">
+                    {% for file_path, lines in details.files.items %}
+                      <small>
+                        <a href="{% url 'view_file_ios' %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type=ios&amp;lines={{ lines }}"> {{ file_path }}</a>
+                      </small>
+                    </br>
+                    {% endfor %}
+                  </div>
                   </td>
                 </tr>    
               {% endfor %} 
@@ -545,6 +559,41 @@
              <strong><i class="fas fa-lock"></i> APP TRANSPORT SECURITY (ATS)</strong>
              </p>
               <div class="table-responsive">
+                {% if ats_analysis and 'ats_summary' in ats_analysis and ats_analysis.ats_summary|length > 0 %}
+          <div class="row">
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-danger">HIGH</span>
+            <h5 class="description-header">{{ ats_analysis.ats_summary.high }}</h5>
+            </div>
+            </div>
+            
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-warning"></i> WARNING</span>
+            <h5 class="description-header">{{ ats_analysis.ats_summary.warning }}</h5>
+            </div>
+            
+            </div>
+            
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-info">INFO</span>
+            <h5 class="description-header">{{ ats_analysis.ats_summary.info }}</h5>
+            </div>
+            
+            </div>
+            
+            <div class="col-sm-2 col-6">
+              <div class="description-block">
+              <span class="text-success">SECURE</span>
+              <h5 class="description-header">{{ ats_analysis.ats_summary.secure }}</h5>
+              </div>
+              
+              </div>
+
+            </div>
+            {% endif %}
                <table class="table table-bordered table-hover table-striped">
 
                   <thead>
@@ -556,8 +605,8 @@
                       </tr>
                   </thead>
                   <tbody>
-                    {% if ats_analysis|length > 0 %}
-                      {% for findings in ats_analysis %}
+                    {% if ats_analysis and 'ats_findings' in ats_analysis %}
+                      {% for findings in ats_analysis.ats_findings %}
                       <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>
@@ -578,21 +627,11 @@
                         </td>
                       </tr>
                       {% endfor %}
-                    {% else %}
-                    <tr>
-                      <td></td>
-                      <td>
-                        No ATS exceptions found.
-                      <td>
-                        <span class="badge bg-success">secure</span>
-                      </td>
-                      <td>
-                        No insecure connections configured. App Transport Security (ATS) is enabled.
-                      </td>
-                    </tr>
                     {% endif %}
                   </tbody>
               </table>
+              
+            
                   </div>
           </div>
         </div><!-- /.card -->
@@ -615,6 +654,50 @@
              <strong><i class="fa fa-code"></i> CODE ANALYSIS</strong>
              </p>
               <div class="table-responsive">
+                {% if code_analysis and 'summary' in code_analysis and code_analysis.summary|length > 0 %}
+          <div class="row">
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-danger">HIGH</span>
+            <h5 class="description-header">{{ code_analysis.summary.high }}</h5>
+            </div>
+            </div>
+            
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-warning"></i> WARNING</span>
+            <h5 class="description-header">{{ code_analysis.summary.warning }}</h5>
+            </div>
+            
+            </div>
+            
+            <div class="col-sm-2 col-6">
+            <div class="description-block border-right">
+            <span class="text-info">INFO</span>
+            <h5 class="description-header">{{ code_analysis.summary.info }}</h5>
+            </div>
+            
+            </div>
+            
+            <div class="col-sm-2 col-6">
+              <div class="description-block border-right">
+              <span class="text-success">SECURE</span>
+              <h5 class="description-header">{{ code_analysis.summary.secure }}</h5>
+              </div>
+              
+              </div>
+
+            <div class="col-sm-2 col-6">
+              <div class="description-block">
+              <span class="text-disabled">SUPPRESSED</span>
+              <h5 class="description-header">{{ code_analysis.summary.suppressed }}</h5>
+              </div>
+              
+              </div>
+              
+            
+            </div>
+            {% endif %}
                    <table id="table_code" class="table table-bordered table-hover table-striped">
                   <thead>
                       <tr>
@@ -628,7 +711,8 @@
                       </tr>
                   </thead>
                   <tbody>
-                    {% for rule, details in code_analysis.items %}
+                    {% if code_analysis and 'findings' in code_analysis %}
+                    {% for rule, details in code_analysis.findings.items %}
                   <tr>
                   <td>{{ forloop.counter }}</td>
                   <td>
@@ -669,10 +753,26 @@
                       {% if details.metadata.masvs %}</br> <strong>OWASP MASVS: </strong>{{ details.metadata.masvs  }}{% endif %}
                   </td>
                   <td>
-                   {% for file_path, lines in details.files.items %}
-                   <a href="../view_file_ios/?file={{ file_path }}&amp;md5={{ md5 }}&amp;type=ios&amp;lines={{ lines }}"> {{ file_path }}</a>
-                  </br>
-                  {% endfor %}
+                  {% if details.files|length < 4 %}
+                    {% for file_path, lines in details.files.items %}
+                      <small>
+                        <a href="{% url 'view_file_ios' %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type=ios&amp;lines={{ lines }}"> {{ file_path }}</a>
+                      </small>
+                    </br>
+                    {% endfor %}
+                  {% else %}
+                    <a class="btn btn-primary btn-xs" data-toggle="collapse" href="#collapsecode{{forloop.counter}}" role="button" aria-expanded="false" aria-controls="collapsecode{{forloop.counter}}">
+                      Show Files
+                    </a>
+                    <div class="collapse" id="collapsecode{{forloop.counter}}">
+                      {% for file_path, lines in details.files.items %}
+                        <small>
+                          <a href="{% url 'view_file_ios' %}?file={{ file_path }}&amp;md5={{ md5 }}&amp;type=ios&amp;lines={{ lines }}"> {{ file_path }}</a>
+                        </small>
+                      </br>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
                   </td>
                   <td>
 
@@ -688,9 +788,12 @@
 
                   </td>
                 </tr>    
-              {% endfor %} 
+              {% endfor %}
+              {% endif %}
            </tbody>
           </table>
+          
+            
             </div>
           </div>
         </div><!-- /.card -->
@@ -730,7 +833,7 @@
                       <td>
                         {% for file in item.files %}
                           {% if file.type %}
-                          <a href="../view_file_ios/?file={{file.file_path}}&amp;type={{file.type}}&amp;md5={{file.hash}}">{{ file.file_path }}</a>
+                          <a href="{% url 'view_file_ios' %}?file={{file.file_path}}&amp;type={{file.type}}&amp;md5={{file.hash}}">{{ file.file_path }}</a>
                           {% else %}
                           {{ file.file_path }}
                           {% endif %}
@@ -751,6 +854,54 @@
     </div>
 </section>
  <!-- ===========================end file analysis ================================== -->
+ <a id="firebase" class="anchor"></a>
+ <section class="content">
+   <div class="container-fluid">
+     <div class="row">
+         <div class="col-lg-12">
+         <div class="card">
+           <div class="card-body">
+             <p>
+              <strong><i class="fas fa-database"></i> FIREBASE DATABASE ANALYSIS</strong>
+              </p>
+               <div class="table-responsive">
+              <table id="table_firebase" class="table table-bordered table-hover table-striped">
+                <thead>
+                  <tr>
+                      <th>TITLE</th>
+                      <th>SEVERITY</th>
+                      <th>DESCRIPTION</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  {% for find in firebase_urls %}
+                  <tr>
+                  <td>{{ find.title }}</td>
+                  <td>
+                  {% if find.severity == 'high' %}
+                    <span class="badge bg-danger">high</span>
+                  {% elif find.severity  == 'secure' %}
+                    <span class="badge bg-success">secure</span>
+                  {% elif find.severity  == 'warning' %}
+                    <span class="badge bg-warning">warning</span>
+                  {% elif find.severity  == 'info' %}
+                    <span class="badge bg-info">info</span>
+                  {% endif %}
+                  </td>
+                  <td>{{ find.description }}</td>
+                  </tr>
+                  {% endfor %}
+              </tbody>
+             </table>
+             </div>
+           </div>
+         </div><!-- /.card -->
+         </div>
+         <!-- end row -->
+         </div>
+     </div>
+ </section>
+  <!-- ===========================end firebase db analysis ================================== -->
 <style>
   #chartdiv {
   width: 100%;
@@ -771,6 +922,35 @@
               <div class="table-responsive">
                 <div id="chartdiv"></div>
             </div>
+
+            <div class="table-responsive">
+              {% if domains %}
+              <p></br>This app may communicate with the following OFAC sanctioned list of countries.</p>
+             <table id="table_ofac" class="table table-bordered table-hover table-striped">
+                  <thead>
+                  <tr>
+                     <th>DOMAIN</th>
+                     <th>COUNTRY/REGION</th>
+                  </tr>
+                 </thead>
+                 <tbody>
+                 {% for domain, details in domains.items %}
+                 {% if details|key:"ofac" == True %}
+                  <tr><td>{{domain}}</td>
+                  <td>
+                    <strong>IP: </strong>{{details|key:"geolocation"|key:"ip"}}  <br/>
+                    <strong>Country: </strong>{{details|key:"geolocation"|key:"country_long"}} <br/>
+                    <strong>Region: </strong>{{details|key:"geolocation"|key:"region"}} <br/>
+                    <strong>City: </strong>{{details|key:"geolocation"|key:"city"}} <br/>
+                  </td>
+                  </tr>
+                  {% endif %}
+                  {% endfor %}
+                </tbody>
+            </table>
+             {% endif %}
+            </div>
+            
           </div>
         </div><!-- /.card -->
         </div>
@@ -870,7 +1050,7 @@
                        {% endfor %}
                         </td>
                        <td>
-                          <a href="../view_file_ios/?file={{urldict|key:"path"}}&amp;md5={{ md5}}&amp;type=ios">{{urldict|key:"path"}}</a>
+                          <a href="{% url 'view_file_ios' %}?file={{urldict|key:"path"}}&amp;md5={{ md5}}&amp;type=ios">{{urldict|key:"path"}}</a>
                        </td>
                     </tr>
                   {% endfor %} 
@@ -885,55 +1065,8 @@
         </div>
     </div>
 </section>
- <!-- ===========================end urls ================================== -->
- <a id="firebase" class="anchor"></a>
-<section class="content">
-  <div class="container-fluid">
-    <div class="row">
-        <div class="col-lg-12">
-        <div class="card">
-          <div class="card-body">
-            <p>
-             <strong><i class="fas fa-database"></i> FIREBASE DATABASE</strong>
-             </p>
-              <div class="table-responsive">
-               {% if firebase_urls %} 
-             <table id="table_firebase" class="table table-bordered table-hover table-striped">
-                  <thead>
-                  <tr>
-                     <th>FIREBASE URL</th>
-                     <th>DETAILS</th>
-                  </tr>
-                 </thead>
-               
-                 <tbody>
-                  {% for item in firebase_urls %}
-                    <tr>
-                       <td>
-                       {{ item.url }}
-                        </td>
-                       <td>
-                         {% if item.open %}
-                          <span class="badge bg-danger">high</span><br/>Firebase Database is exposed publicly.
-                        {% else %}
-                         <span class="badge bg-primary">info</span><br/>App talks to a Firebase database.
-                         {% endif %}
-                       </td>
-                    </tr>
-                  {% endfor %} 
-               </tbody>
-            </table>
-             {% endif %}
-            </div>
-          </div>
-        </div><!-- /.card -->
-        </div>
-        <!-- end row -->
-        </div>
-    </div>
-</section>
- <!-- ===========================end firebase db ================================== -->
- <a id="emails" class="anchor"></a>
+<!-- ===========================end urls ================================== -->
+<a id="emails" class="anchor"></a>
 <section class="content">
   <div class="container-fluid">
     <div class="row">
@@ -961,7 +1094,7 @@
                        {% endfor %}
                         </td>
                        <td>
-                          <a href="../?file={{email_dict|key:"path"}}&amp;md5={{ md5}}&amp;type=ios">{{email_dict|key:"path"}}</a>   
+                          <a href="{% url 'view_file_ios' %}?file={{email_dict|key:"path"}}&amp;md5={{ md5}}&amp;type=ios">{{email_dict|key:"path"}}</a>
                        </td>
                     </tr>
                   {% endfor %} 
@@ -1048,6 +1181,27 @@
          </div>
  </section>
   <!-- ===========================end secrets ================================== -->
+  <a id="strings" class="anchor"></a>
+<section class="content">
+  <div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-12">
+        <div class="card">
+          <div class="card-body">
+             <p>
+             <strong><i class="fas fa-font"></i> STRINGS</strong>
+             </p>
+               <div class="list-group">
+                 {% include 'base/list.html' with list=strings type="strings"  limit=100 %}
+              </div>
+            </div>
+          </div>
+        </div><!-- /.card -->
+        </div>
+        <!-- end row -->
+        </div>
+</section>
+ <!-- ===========================end strings ================================== -->
 <a id="files" class="anchor"></a>
 <section class="content">
   <div class="container-fluid">
@@ -1059,11 +1213,7 @@
             <strong><i class="far fa-copy"></i> FILES</strong>
             </p>
               <div class="list-group">
-                <p>  
-                {% for file in files %}
-                  {{ file}} <br/>
-                {% endfor %}                               
-                </p>
+                {% include 'base/list.html' with list=files type="files"  limit=200 %}
             </div>
           </div>
         </div>
@@ -1131,8 +1281,10 @@
 <!--end new UI-->
 {% block extra_scripts %}
 <!-- DataTables -->
-<script src="{% static "adminlte/plugins/datatables/jquery.dataTables.min.js" %} "></script>
-<script src="{% static "adminlte/plugins/datatables-bs4/dataTables.bootstrap4.min.js" %}"></script>
+<script src="{% static "datatables/js/pdfmake.min.js" %}"></script>
+<script src="{% static "datatables/js/vfs_fonts.js" %}"></script>
+<script src="{% static "datatables/js/datatables.combined.min.js" %}"></script>
+<script src="{% static "others/js/datatables_init.js" %}"></script>
 <script src="{% static "amcharts/core.js" %}"></script>
 <script src="{% static "amcharts/maps.js" %}"></script>
 <script src="{% static "amcharts/worldIndiaLow.js" %}"></script>
@@ -1146,23 +1298,16 @@
 </script>
 <script src="{% static "others/js/suppression.js" %}"></script>
 <script>
+
+  // Remove rescan parameter
+  window.history.replaceState({}, '', window.location.pathname);
+
   // Globals
   const csrf = '{{ csrf_token }}'
   const pkg = '{{ bundle_id }}'
   const hash = '{{ md5 }}'
 
-  $(function () {
-    // Datatable
-    $('table').DataTable({
-      "paging": true,
-      "lengthChange": false,
-      "searching": true,
-      "ordering": true,
-      "info": true,
-      "autoWidth": true,
-      "responsive": true,
-    });
-  });
+  
   // Navbar Active
     $(".nav-link").on("click", function() {
     $(".nav-link").removeClass("active");
@@ -1244,4 +1389,37 @@
   {% endif %}
   ];
   </script>
+{% endblock %}
+{% block scan_logs %}
+<table id="scan_logs" class="table table-bordered table-hover table-striped">
+    <tr>
+        <th>Timestamp</th>
+        <th>Event</th>
+        <th>Error</th>
+    </tr>
+<tbody>
+  {% for log in logs %}
+  <tr>
+    <td>
+      {{log.timestamp}}
+    </td>
+    <td>
+      {{log.status}}
+    </td>
+    <td>
+      {% if not log.exception %}
+      <p class="text-success">
+        OK
+      </p>
+      {% else %}
+      <p class="text-danger">
+      {{log.exception}}
+       </p>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</tbody>
+</table>
+
 {% endblock %}

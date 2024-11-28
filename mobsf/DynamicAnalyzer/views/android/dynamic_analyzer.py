@@ -15,7 +15,10 @@ from django.conf import settings
 from django.shortcuts import render
 from django.db.models import ObjectDoesNotExist
 
-from mobsf.DynamicAnalyzer.views.android.environment import Environment
+from mobsf.DynamicAnalyzer.views.android.environment import (
+    ANDROID_API_SUPPORTED,
+    Environment,
+)
 from mobsf.DynamicAnalyzer.views.android.operations import (
     get_package_name,
 )
@@ -25,21 +28,32 @@ from mobsf.DynamicAnalyzer.tools.webproxy import (
     stop_httptools,
 )
 from mobsf.MobSF.utils import (
+    get_android_dm_exception_msg,
     get_config_loc,
     get_device,
     get_proxy_ip,
     is_md5,
     print_n_send_error_response,
+    python_dict,
     python_list,
     strict_package_check,
 )
 from mobsf.MobSF.views.scanning import add_to_recent_scan
 from mobsf.StaticAnalyzer.models import StaticAnalyzerAndroid
+from mobsf.MobSF.views.authentication import (
+    login_required,
+)
+from mobsf.MobSF.views.authorization import (
+    Permissions,
+    permission_required,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def dynamic_analysis(request, api=False):
+@login_required
+@permission_required(Permissions.SCAN)
+def android_dynamic_analysis(request, api=False):
     """Android Dynamic Analysis Entry point."""
     try:
         scan_apps = []
@@ -53,7 +67,7 @@ def dynamic_analysis(request, api=False):
 
             logcat = Path(settings.UPLD_DIR) / apk.MD5 / 'logcat.txt'
             temp_dict = {
-                'ICON_FOUND': apk.ICON_FOUND,
+                'ICON_PATH': apk.ICON_PATH,
                 'MD5': apk.MD5,
                 'APP_NAME': apk.APP_NAME,
                 'VERSION_NAME': apk.VERSION_NAME,
@@ -65,20 +79,17 @@ def dynamic_analysis(request, api=False):
         try:
             identifier = get_device()
         except Exception:
-            msg = ('Is Android VM running? MobSF cannot'
-                   ' find android instance identifier.'
-                   ' Please run an android instance and refresh'
-                   ' this page. If this error persists,'
-                   ' set ANALYZER_IDENTIFIER in '
-                   f'{get_config_loc()}')
-            return print_n_send_error_response(request, msg, api)
+            return print_n_send_error_response(
+                request, get_android_dm_exception_msg(), api)
         try:
             if identifier:
                 env = Environment(identifier)
+                env.connect()
                 device_packages = env.get_device_packages()
-                pkg_file = Path(settings.DWD_DIR) / 'packages.json'
-                with pkg_file.open('w', encoding='utf-8') as target:
-                    dump(device_packages, target)
+                if device_packages:
+                    pkg_file = Path(settings.DWD_DIR) / 'packages.json'
+                    with pkg_file.open('w', encoding='utf-8') as target:
+                        dump(device_packages, target)
                 and_ver = env.get_android_version()
                 and_sdk = env.get_android_sdk()
         except Exception:
@@ -87,6 +98,7 @@ def dynamic_analysis(request, api=False):
                    'identifier': identifier,
                    'android_version': and_ver,
                    'android_sdk': and_sdk,
+                   'android_supported': ANDROID_API_SUPPORTED,
                    'proxy_ip': get_proxy_ip(identifier),
                    'proxy_port': settings.PROXY_PORT,
                    'settings_loc': get_config_loc(),
@@ -95,18 +107,21 @@ def dynamic_analysis(request, api=False):
                    'version': settings.MOBSF_VER}
         if api:
             return context
-        template = 'dynamic_analysis/dynamic_analysis.html'
+        template = 'dynamic_analysis/android/dynamic_analysis.html'
         return render(request, template, context)
     except Exception as exp:
         logger.exception('Dynamic Analysis')
         return print_n_send_error_response(request, exp, api)
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 def dynamic_analyzer(request, checksum, api=False):
     """Android Dynamic Analyzer Environment."""
     try:
         identifier = None
         activities = None
+        deeplinks = None
         exported_activities = None
         if api:
             reinstall = request.POST.get('re_install', '1')
@@ -119,7 +134,7 @@ def dynamic_analyzer(request, checksum, api=False):
             # in REST API
             return print_n_send_error_response(
                 request,
-                'Invalid Parameters',
+                'Invalid Hash',
                 api)
         package = get_package_name(checksum)
         if not package:
@@ -131,15 +146,8 @@ def dynamic_analyzer(request, checksum, api=False):
         try:
             identifier = get_device()
         except Exception:
-            pass
-        if not identifier:
-            msg = ('Is the android instance running? MobSF cannot'
-                   ' find android instance identifier. '
-                   'Please run an android instance and refresh'
-                   ' this page. If this error persists,'
-                   ' set ANALYZER_IDENTIFIER in '
-                   f'{get_config_loc()}')
-            return print_n_send_error_response(request, msg, api)
+            return print_n_send_error_response(
+                request, get_android_dm_exception_msg(), api)
 
         # Get activities from the static analyzer results
         try:
@@ -149,9 +157,11 @@ def dynamic_analyzer(request, checksum, api=False):
                 static_android_db.EXPORTED_ACTIVITIES)
             activities = python_list(
                 static_android_db.ACTIVITIES)
+            deeplinks = python_dict(
+                static_android_db.BROWSABLE_ACTIVITIES)
         except ObjectDoesNotExist:
             logger.warning(
-                'Failed to get Activities. '
+                'Failed to get Activities/Deeplinks. '
                 'Static Analysis not completed for the app.')
         env = Environment(identifier)
         if not env.connect_n_mount():
@@ -170,6 +180,8 @@ def dynamic_analyzer(request, checksum, api=False):
                     'Failed to MobSFy the instance',
                     api)
             if version < 5:
+                # Start Clipboard monitor
+                env.start_clipmon()
                 xposed_first_run = True
         if xposed_first_run:
             msg = ('Have you MobSFyed the instance before'
@@ -187,10 +199,6 @@ def dynamic_analyzer(request, checksum, api=False):
         env.enable_adb_reverse_tcp(version)
         # Apply Global Proxy to device
         env.set_global_proxy(version)
-        # Start Clipboard monitor
-        env.start_clipmon()
-        # Get Screen Resolution
-        screen_width, screen_height = env.get_screen_res()
         if install == '1':
             # Install APK
             apk_path = Path(settings.UPLD_DIR) / checksum / f'{checksum}.apk'
@@ -208,14 +216,13 @@ def dynamic_analyzer(request, checksum, api=False):
                     msg,
                     api)
         logger.info('Testing Environment is Ready!')
-        context = {'screen_width': screen_width,
-                   'screen_height': screen_height,
-                   'package': package,
+        context = {'package': package,
                    'hash': checksum,
                    'android_version': version,
                    'version': settings.MOBSF_VER,
                    'activities': activities,
                    'exported_activities': exported_activities,
+                   'deeplinks': deeplinks,
                    'title': 'Dynamic Analyzer'}
         template = 'dynamic_analysis/android/dynamic_analyzer.html'
         if api:
@@ -229,6 +236,8 @@ def dynamic_analyzer(request, checksum, api=False):
             api)
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 def httptools_start(request):
     """Start httprools UI."""
     logger.info('Starting httptools Web UI')
@@ -243,14 +252,15 @@ def httptools_start(request):
         else:
             project = ''
         url = f'{httptools_url}/dashboard/{project}'
-        return HttpResponseRedirect(
-            url)  # lgtm [py/reflective-xss] lgtm [py/url-redirection]
+        return HttpResponseRedirect(url)
     except Exception:
         logger.exception('Starting httptools Web UI')
         err = 'Error Starting httptools UI'
         return print_n_send_error_response(request, err)
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 def logcat(request, api=False):
     logger.info('Starting Logcat streaming')
     try:
@@ -294,6 +304,8 @@ def logcat(request, api=False):
         return print_n_send_error_response(request, err, api)
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 def trigger_static_analysis(request, checksum):
     """On device APK Static Analysis."""
     try:
@@ -310,27 +322,25 @@ def trigger_static_analysis(request, checksum):
         try:
             identifier = get_device()
         except Exception:
-            pass
-        if not identifier:
             err = 'Cannot connect to Android Runtime'
             return print_n_send_error_response(request, err)
         env = Environment(identifier)
-        apk_file = env.get_apk(checksum, package)
-        if not apk_file:
+        scan_type = env.get_apk(checksum, package)
+        if not scan_type:
             err = 'Failed to download APK file'
             return print_n_send_error_response(request, err)
+        file_name = f'{package}.apk'
+        if scan_type == 'apks':
+            file_name = f'{file_name}s'
         data = {
             'analyzer': 'static_analyzer',
             'status': 'success',
             'hash': checksum,
-            'scan_type': 'apk',
-            'file_name': f'{package}.apk',
+            'scan_type': scan_type,
+            'file_name': file_name,
         }
         add_to_recent_scan(data)
-        return HttpResponseRedirect(
-            f'/static_analyzer/?name='  # lgtm [py/url-redirection]
-            f'{package}.apk&checksum={checksum}'
-            f'&type=apk')
+        return HttpResponseRedirect(f'/static_analyzer/{checksum}/')
     except Exception:
         msg = 'On device APK Static Analysis'
         logger.exception(msg)

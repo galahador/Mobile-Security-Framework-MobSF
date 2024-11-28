@@ -4,26 +4,38 @@ import json
 import logging
 import os
 import random
-import re
+import shlex
 import subprocess
 import threading
 from pathlib import Path
 
 from django.conf import settings
-from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
 
+from mobsf.DynamicAnalyzer.views.common.shared import (
+    invalid_params,
+    is_attack_pattern,
+    send_response,
+)
 from mobsf.DynamicAnalyzer.views.android.environment import (
     Environment,
 )
 from mobsf.MobSF.utils import (
     cmd_injection_check,
+    docker_translate_localhost,
     get_adb,
     get_device,
     is_md5,
     is_number,
 )
 from mobsf.StaticAnalyzer.models import StaticAnalyzerAndroid
+from mobsf.MobSF.views.authentication import (
+    login_required,
+)
+from mobsf.MobSF.views.authorization import (
+    Permissions,
+    permission_required,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,38 +57,11 @@ def get_package_name(checksum):
         if packages.get(checksum):
             return packages[checksum][0]
         return None
-
-
-def send_response(data, api=False):
-    """Return JSON Response."""
-    if api:
-        return data
-    return HttpResponse(
-        json.dumps(data),  # lgtm [py/stack-trace-exposure]
-        content_type='application/json')
-
-
-def is_attack_pattern(user_input):
-    """Check for attacks."""
-    atk_pattern = re.compile(r';|\$\(|\|\||&&')
-    stat = re.findall(atk_pattern, user_input)
-    if stat:
-        logger.error('Possible RCE attack detected')
-    return stat
-
-
-def invalid_params(api=False):
-    """Standard response for invalid params."""
-    msg = 'Invalid Parameters'
-    logger.error(msg)
-    data = {'status': 'failed', 'message': msg}
-    if api:
-        return data
-    return send_response(data)
-
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def mobsfy(request, api=False):
     """Configure Instance for Dynamic Analysis."""
@@ -92,6 +77,7 @@ def mobsfy(request, api=False):
                 'message': 'Command Injection Detected',
             }
             return send_response(data, api)
+        identifier = docker_translate_localhost(identifier)
         create_env = Environment(identifier)
         if not create_env.connect_n_mount():
             data = {'status': 'failed', 'message': msg}
@@ -110,6 +96,8 @@ def mobsfy(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def execute_adb(request, api=False):
     """Execute ADB Commands."""
@@ -138,6 +126,8 @@ def execute_adb(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def get_component(request):
     """Get Android Component."""
@@ -158,6 +148,8 @@ def get_component(request):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def run_apk(request):
     """Run Android APK."""
@@ -180,6 +172,8 @@ def run_apk(request):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def take_screenshot(request, api=False):
     """Take Screenshot."""
@@ -209,50 +203,87 @@ def take_screenshot(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def screen_cast(request):
     """ScreenCast."""
-    data = {}
+    data = {
+        'status': 'failed',
+        'message': 'Failed to stream screen'}
     try:
         env = Environment()
-        trd = threading.Thread(target=env.screen_stream)
-        trd.daemon = True
-        trd.start()
-        data = {'status': 'ok'}
+        b64dat = env.screen_stream()
+        data = {
+            'status': 'ok',
+            'message': f'data:image/png;base64,{b64dat}'}
     except Exception as exp:
         logger.exception('Screen streaming')
-        data = {'status': 'failed', 'message': str(exp)}
+        data['message'] = str(exp)
     return send_response(data)
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def touch(request):
-    """Sending Touch Events."""
-    data = {}
+    """Sending Touch/Swipe/Text Events."""
+    data = {
+        'status': 'failed',
+        'message': '',
+    }
     try:
         env = Environment()
-        x_axis = request.POST['x']
-        y_axis = request.POST['y']
-        if not is_number(x_axis) and not is_number(y_axis):
-            logger.error('Axis parameters must be numbers')
-            return invalid_params()
-        args = ['input',
-                'tap',
-                x_axis,
-                y_axis]
-        trd = threading.Thread(target=env.adb_command,
-                               args=(args, True))
-        trd.daemon = True
-        trd.start()
+        x = request.POST['x']
+        y = request.POST['y']
+        event = request.POST['event']
+        max_x = request.POST.get('max_x', 0)
+        max_y = request.POST.get('max_y', 0)
+
+        if event == 'text':
+            args = ['text', shlex.quote(x)]
+        else:
+            if (not is_number(x)
+                    or not is_number(y)
+                    or not is_number(max_x)
+                    or not is_number(max_y)):
+                return data
+            # Should not be greater than max screen size
+            swipe_x = str(min(int(float(x)) + 500, int(float(max_x))))
+            swipe_y = str(min(int(float(y)) + 500, int(float(max_y))))
+
+            if event == 'enter':
+                args = ['keyevent', '66']
+            elif event == 'backspace':
+                args = ['keyevent', '67']
+            elif event == 'left':
+                args = ['keyevent', '21']
+            elif event == 'right':
+                args = ['keyevent', '22']
+            elif event == 'swipe_up':
+                args = ['swipe', x, y, x, swipe_y]
+            elif event == 'swipe_down':
+                args = ['swipe', x, swipe_y, x, y]
+            elif event == 'swipe_left':
+                args = ['swipe', x, y, swipe_x, y]
+            elif event == 'swipe_right':
+                args = ['swipe', swipe_x, y, x, y]
+            else:
+                args = ['tap', x, y]
+        threading.Thread(target=env.adb_command,
+                         args=(['input'] + args, True),
+                         daemon=True).start()
         data = {'status': 'ok'}
     except Exception as exp:
-        logger.exception('Sending Touch Events')
-        data = {'status': 'failed', 'message': str(exp)}
+        logger.exception('Sending Touchscreen Events')
+        data['message'] = str(exp)
     return send_response(data)
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def mobsf_ca(request, api=False):
     """Install and Remove MobSF Proxy RootCA."""
@@ -276,6 +307,8 @@ def mobsf_ca(request, api=False):
 # AJAX
 
 
+@login_required
+@permission_required(Permissions.SCAN)
 @require_http_methods(['POST'])
 def global_proxy(request, api=False):
     """Set/unset global proxy."""
